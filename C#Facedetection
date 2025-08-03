@@ -1,6 +1,5 @@
 using OpenCvSharp;
 using System.Collections.Generic;
-using System.Diagnostics;
 using UnityEngine;
 using static System.Net.Mime.MediaTypeNames;
 
@@ -13,14 +12,15 @@ public class FaceGestureDetector : MonoBehaviour
     float baselineX = -1f;
     bool calibrated = false;
     bool neutral = true;
+
     float calibrationTime = 5f;
     float calibrationTimer = 0f;
     List<Vector2> calibrationSamples = new List<Vector2>();
 
-    // Thresholds (tune for sensitivity)
-    public float jumpThreshold = 40f;
-    public float duckThreshold = 90f;
-    public float swipeThreshold =750f;
+    // Thresholds (scaled by face size)
+    public float jumpMultiplier = 0.1f;
+    public float duckMultiplier = 1.5f;
+    public float swipeMultiplier = 3.0f;
 
     void Start()
     {
@@ -29,12 +29,12 @@ public class FaceGestureDetector : MonoBehaviour
         GetComponent<Renderer>().material.mainTexture = webcam;
         webcam.Play();
 
-        // Load Haar face cascade
-        string cascadePath = System.IO.Path.Combine(UnityEngine.Application.streamingAssetsPath, "haarcascades/haarcascade_frontalface_default.xml");
-        if (!System.IO.File.Exists(cascadePath))
-            UnityEngine.Debug.LogError("Cascade file not found at: " + cascadePath);
+        // Load face cascade
+        string facePath = System.IO.Path.Combine(UnityEngine.Application.streamingAssetsPath, "haarcascades/haarcascade_frontalface_default.xml");
+        if (!System.IO.File.Exists(facePath))
+            Debug.LogError("Face cascade file not found: " + facePath);
 
-        faceCascade = new CascadeClassifier(cascadePath);
+        faceCascade = new CascadeClassifier(facePath);
     }
 
     void Update()
@@ -72,7 +72,7 @@ public class FaceGestureDetector : MonoBehaviour
                     baselineX = sumX / calibrationSamples.Count;
                     baselineY = sumY / calibrationSamples.Count;
                     calibrated = true;
-                    UnityEngine.Debug.Log("Calibration complete. Baseline X: " + baselineX + " Y: " + baselineY);
+                    Debug.Log("Calibration complete. Baseline X: " + baselineX + " Y: " + baselineY);
                 }
             }
             else
@@ -81,55 +81,55 @@ public class FaceGestureDetector : MonoBehaviour
                 float deltaY = faceCenter.y - baselineY;
                 float deltaX = faceCenter.x - baselineX;
 
+                // Scale thresholds by face size
+                float jumpThreshold = face.Height * jumpMultiplier;
+                float duckThreshold = face.Height * duckMultiplier;
+                float swipeThreshold = face.Width * swipeMultiplier;
+
                 // Detect Jump
-                if (deltaY < -jumpThreshold && neutral == true)
+                if (deltaY < -jumpThreshold && neutral)
                 {
-                    UnityEngine.Debug.Log("Jump detected"+deltaY);
+                    UnityEngine.Debug.Log("Jump detected " + deltaY);
                     neutral = false;
-
                 }
-
-                // Detect Duck
-                else if(deltaY > 90 && neutral == true)
-                {
-                    UnityEngine.Debug.Log("Duck detected"+deltaY);
-                    neutral = false;
-
-                }
-
                 // Detect Swipe
-                else if(deltaX > swipeThreshold && neutral == true)
+                else if (deltaX > swipeThreshold && neutral)
                 {
                     UnityEngine.Debug.Log("Swipe Right detected");
                     neutral = false;
-
                 }
-                else if(deltaX < -swipeThreshold && neutral == true)
+                else if (deltaX < -swipeThreshold && neutral)
                 {
                     UnityEngine.Debug.Log("Swipe Left detected");
                     neutral = false;
                 }
-
-                else if (deltaY>-jumpThreshold&&deltaY<90&&deltaX<swipeThreshold&&deltaX>-swipeThreshold)
+                // Reset to neutral if back in baseline range
+                else if (deltaY > -jumpThreshold && deltaY < duckThreshold && deltaX < swipeThreshold && deltaX > -swipeThreshold)
                 {
                     neutral = true;
                 }
             }
 
-            // Draw face box & baseline
+            // Draw face 
             Cv2.Rectangle(frame, face, Scalar.Green, 2);
+
+            // Draw baseline
             if (calibrated)
             {
                 Cv2.Line(frame,
                     new OpenCvSharp.Point(0, baselineY),
                     new OpenCvSharp.Point(frame.Width, baselineY),
-                    Scalar.Blue, 2);
-
+                    Scalar.Yellow, 2);
                 Cv2.Line(frame,
                     new OpenCvSharp.Point(baselineX, 0),
                     new OpenCvSharp.Point(baselineX, frame.Height),
-                    Scalar.Blue, 2);
+                    Scalar.Yellow, 2);
             }
+        }
+        else if (calibrated)
+        {
+            // --- If face not detected after calibration -> Jump ---
+            Debug.Log("Jump detected (face lost)");
         }
 
         // Show frame
