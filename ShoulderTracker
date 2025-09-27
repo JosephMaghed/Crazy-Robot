@@ -26,6 +26,8 @@ namespace Mediapipe.Unity.Sample.PoseLandmarkDetection
 
         // Event publishes normalized or world-space shoulder coordinates: left, right, leftVis, rightVis
         public event Action<Vector3, Vector3, float, float> OnShouldersDetected;
+        private float _prevLeftY = float.NaN;
+        private float _prevRightY = float.NaN;
 
         private const int LEFT_SHOULDER_INDEX = 11;
         private const int RIGHT_SHOULDER_INDEX = 12;
@@ -200,11 +202,44 @@ namespace Mediapipe.Unity.Sample.PoseLandmarkDetection
 
             var left = ExtractVector3FromLandmark(leftObj);
             var right = ExtractVector3FromLandmark(rightObj);
-            
-            UnityEngine.Debug.Log($"[PoseLandmarkerRunner] Shoulders -> left:{left} right:{right}");
+
+            //UnityEngine.Debug.Log($"[PoseLandmarkerRunner] Shoulders -> left:{left} right:{right}");
             OnShouldersDetected?.Invoke(left, right, 1f, 1f);
 
-            OnShouldersDetected?.Invoke(left, right, 1f, 1f);
+            // Threshold = 10% of shoulder horizontal distance
+            float shoulderDistX = Mathf.Abs(left.x - right.x);
+            float threshold = 0.1f * shoulderDistX;
+
+            // Determine coordinate convention (assume normalized if values are roughly in 0..1)
+            bool looksNormalized =
+                Mathf.Abs(left.x) <= 1.1f && Mathf.Abs(left.y) <= 1.1f &&
+                Mathf.Abs(right.x) <= 1.1f && Mathf.Abs(right.y) <= 1.1f;
+
+            float leftY = left.y;
+            float rightY = right.y;
+
+            // Initialize previous values on first frame
+            if (float.IsNaN(_prevLeftY) || float.IsNaN(_prevRightY))
+            {
+                _prevLeftY = leftY;
+                _prevRightY = rightY;
+            }
+            else
+            {
+                // For normalized coords, upward motion means Y decreases
+                // For world coords, upward motion means Y increases
+                float deltaLeft = looksNormalized ? (_prevLeftY - leftY) : (leftY - _prevLeftY);
+                float deltaRight = looksNormalized ? (_prevRightY - rightY) : (rightY - _prevRightY);
+
+                if (deltaLeft > threshold || deltaRight > threshold)
+                {
+                    UnityEngine.Debug.Log("Jump");
+                }
+
+                _prevLeftY = leftY;
+                _prevRightY = rightY;
+            }
+
         }
 
         private object GetFirstPoseElement(object result, string poseFieldName)
