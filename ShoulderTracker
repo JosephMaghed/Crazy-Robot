@@ -1,0 +1,331 @@
+// Copyright (c) 2023 homuler
+//
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+using Mediapipe.Tasks.Vision.PoseLandmarker;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Reflection;
+using UnityEngine;
+using UnityEngine.Rendering;
+using static System.Net.Mime.MediaTypeNames;
+
+namespace Mediapipe.Unity.Sample.PoseLandmarkDetection
+{
+    public class PoseLandmarkerRunner : VisionTaskApiRunner<PoseLandmarker>
+    {
+        [SerializeField] private PoseLandmarkerResultAnnotationController _poseLandmarkerResultAnnotationController;
+
+        private Experimental.TextureFramePool _textureFramePool;
+
+        public readonly PoseLandmarkDetectionConfig config = new PoseLandmarkDetectionConfig();
+
+        // Event publishes normalized or world-space shoulder coordinates: left, right, leftVis, rightVis
+        public event Action<Vector3, Vector3, float, float> OnShouldersDetected;
+
+        private const int LEFT_SHOULDER_INDEX = 11;
+        private const int RIGHT_SHOULDER_INDEX = 12;
+
+        public override void Stop()
+        {
+            base.Stop();
+            _textureFramePool?.Dispose();
+            _textureFramePool = null;
+        }
+
+        protected override IEnumerator Run()
+        {
+            UnityEngine.Debug.Log($"Delegate = {config.Delegate}");
+            UnityEngine.Debug.Log($"Image Read Mode = {config.ImageReadMode}");
+            UnityEngine.Debug.Log($"Model = {config.ModelName}");
+            UnityEngine.Debug.Log($"Running Mode = {config.RunningMode}");
+            UnityEngine.Debug.Log($"NumPoses = {config.NumPoses}");
+            UnityEngine.Debug.Log($"MinPoseDetectionConfidence = {config.MinPoseDetectionConfidence}");
+            UnityEngine.Debug.Log($"MinPosePresenceConfidence = {config.MinPosePresenceConfidence}");
+            UnityEngine.Debug.Log($"MinTrackingConfidence = {config.MinTrackingConfidence}");
+            UnityEngine.Debug.Log($"OutputSegmentationMasks = {config.OutputSegmentationMasks}");
+
+            yield return AssetLoader.PrepareAssetAsync(config.ModelPath);
+
+            var options = config.GetPoseLandmarkerOptions(config.RunningMode == Tasks.Vision.Core.RunningMode.LIVE_STREAM ? OnPoseLandmarkDetectionOutput : null);
+            taskApi = PoseLandmarker.CreateFromOptions(options, GpuManager.GpuResources);
+            var imageSource = ImageSourceProvider.ImageSource;
+
+            yield return imageSource.Play();
+
+            if (!imageSource.isPrepared)
+            {
+                Logger.LogError(TAG, "Failed to start ImageSource, exiting...");
+                yield break;
+            }
+
+            // Use RGBA32 as the input format.
+            // TODO: When using GpuBuffer, MediaPipe assumes that the input format is BGRA, so maybe the following code needs to be fixed.
+            _textureFramePool = new Experimental.TextureFramePool(imageSource.textureWidth, imageSource.textureHeight, TextureFormat.RGBA32, 10);
+
+            // NOTE: The screen will be resized later, keeping the aspect ratio.
+            screen.Initialize(imageSource);
+
+            SetupAnnotationController(_poseLandmarkerResultAnnotationController, imageSource);
+            _poseLandmarkerResultAnnotationController.InitScreen(imageSource.textureWidth, imageSource.textureHeight);
+
+            var transformationOptions = imageSource.GetTransformationOptions();
+            var flipHorizontally = transformationOptions.flipHorizontally;
+            var flipVertically = transformationOptions.flipVertically;
+
+            // Always setting rotationDegrees to 0 to avoid the issue that the detection becomes unstable when the input image is rotated.
+            // https://github.com/homuler/MediaPipeUnityPlugin/issues/1196
+            var imageProcessingOptions = new Tasks.Vision.Core.ImageProcessingOptions(rotationDegrees: 0);
+
+            AsyncGPUReadbackRequest req = default;
+            var waitUntilReqDone = new WaitUntil(() => req.done);
+            var waitForEndOfFrame = new WaitForEndOfFrame();
+            var result = PoseLandmarkerResult.Alloc(options.numPoses, options.outputSegmentationMasks);
+
+            // NOTE: we can share the GL context of the render thread with MediaPipe (for now, only on Android)
+            var canUseGpuImage = SystemInfo.graphicsDeviceType == GraphicsDeviceType.OpenGLES3 && GpuManager.GpuResources != null;
+            using var glContext = canUseGpuImage ? GpuManager.GetGlContext() : null;
+
+            while (true)
+            {
+                if (isPaused)
+                {
+                    yield return new WaitWhile(() => isPaused);
+                }
+
+                if (!_textureFramePool.TryGetTextureFrame(out var textureFrame))
+                {
+                    yield return new WaitForEndOfFrame();
+                    continue;
+                }
+
+                // Build the input Image
+                Image image;
+                switch (config.ImageReadMode)
+                {
+                    case ImageReadMode.GPU:
+                        if (!canUseGpuImage)
+                        {
+                            throw new Exception("ImageReadMode.GPU is not supported");
+                        }
+                        textureFrame.ReadTextureOnGPU(imageSource.GetCurrentTexture(), flipHorizontally, flipVertically);
+                        image = textureFrame.BuildGPUImage(glContext);
+                        // TODO: Currently we wait here for one frame to make sure the texture is fully copied to the TextureFrame before sending it to MediaPipe.
+                        // This usually works but is not guaranteed. Find a proper way to do this. See: https://github.com/homuler/MediaPipeUnityPlugin/pull/1311
+                        yield return waitForEndOfFrame;
+                        break;
+                    case ImageReadMode.CPU:
+                        yield return waitForEndOfFrame;
+                        textureFrame.ReadTextureOnCPU(imageSource.GetCurrentTexture(), flipHorizontally, flipVertically);
+                        image = textureFrame.BuildCPUImage();
+                        textureFrame.Release();
+                        break;
+                    case ImageReadMode.CPUAsync:
+                    default:
+                        req = textureFrame.ReadTextureAsync(imageSource.GetCurrentTexture(), flipHorizontally, flipVertically);
+                        yield return waitUntilReqDone;
+
+                        if (req.hasError)
+                        {
+                            UnityEngine.Debug.LogWarning($"Failed to read texture from the image source");
+                            continue;
+                        }
+                        image = textureFrame.BuildCPUImage();
+                        textureFrame.Release();
+                        break;
+                }
+
+                switch (taskApi.runningMode)
+                {
+                    case Tasks.Vision.Core.RunningMode.IMAGE:
+                        if (taskApi.TryDetect(image, imageProcessingOptions, ref result))
+                        {
+                            _poseLandmarkerResultAnnotationController.DrawNow(result);
+                            TryInvokeShoulders(result);
+                        }
+                        else
+                        {
+                            _poseLandmarkerResultAnnotationController.DrawNow(default);
+                        }
+                        DisposeAllMasks(result);
+                        break;
+                    case Tasks.Vision.Core.RunningMode.VIDEO:
+                        if (taskApi.TryDetectForVideo(image, GetCurrentTimestampMillisec(), imageProcessingOptions, ref result))
+                        {
+                            _poseLandmarkerResultAnnotationController.DrawNow(result);
+                            TryInvokeShoulders(result);
+                        }
+                        else
+                        {
+                            _poseLandmarkerResultAnnotationController.DrawNow(default);
+                        }
+                        DisposeAllMasks(result);
+                        break;
+                    case Tasks.Vision.Core.RunningMode.LIVE_STREAM:
+                        taskApi.DetectAsync(image, GetCurrentTimestampMillisec(), imageProcessingOptions);
+                        break;
+                }
+            }
+        }
+
+        private void OnPoseLandmarkDetectionOutput(PoseLandmarkerResult result, Image image, long timestamp)
+        {
+            // Publish shoulders before scheduling draw to ensure subscribers can react immediately
+            TryInvokeShoulders(result);
+            _poseLandmarkerResultAnnotationController.DrawLater(result);
+            DisposeAllMasks(result);
+        }
+
+        // Reflection-safe extraction of shoulder landmarks compatible with various generated types
+        private void TryInvokeShoulders(PoseLandmarkerResult result)
+        {
+
+            // Try normalized pose list first, then world pose list
+            var firstPoseObj = GetFirstPoseElement(result, "poseLandmarks") ?? GetFirstPoseElement(result, "poseWorldLandmarks");
+            if (firstPoseObj == null) return;
+
+            var landmarkList = GetLandmarkEnumerable(firstPoseObj);
+            if (landmarkList == null) return;
+
+            // Ensure we have enough landmarks
+            if (landmarkList.Count <= RIGHT_SHOULDER_INDEX) return;
+
+            var leftObj = landmarkList[LEFT_SHOULDER_INDEX];
+            var rightObj = landmarkList[RIGHT_SHOULDER_INDEX];
+            if (leftObj == null || rightObj == null) return;
+
+            var left = ExtractVector3FromLandmark(leftObj);
+            var right = ExtractVector3FromLandmark(rightObj);
+            
+            UnityEngine.Debug.Log($"[PoseLandmarkerRunner] Shoulders -> left:{left} right:{right}");
+            OnShouldersDetected?.Invoke(left, right, 1f, 1f);
+
+            OnShouldersDetected?.Invoke(left, right, 1f, 1f);
+        }
+
+        private object GetFirstPoseElement(object result, string poseFieldName)
+        {
+            if (result == null) return null;
+            var t = result.GetType();
+
+            // Try property/field (case-insensitive)
+            var prop = t.GetProperty(poseFieldName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+            var field = t.GetField(poseFieldName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+            var listObj = prop != null ? prop.GetValue(result) : field != null ? field.GetValue(result) : null;
+            if (listObj == null) return null;
+
+            // If the returned object is an IList, return its first element
+            if (listObj is IList ilist)
+            {
+                return ilist.Count > 0 ? ilist[0] : null;
+            }
+
+            // If IEnumerable but not IList, enumerate to get first
+            if (listObj is IEnumerable ie)
+            {
+                foreach (var item in ie) return item;
+            }
+
+            return null;
+        }
+
+        private IList GetLandmarkEnumerable(object poseObj)
+        {
+            if (poseObj == null) return null;
+
+            // If the pose object itself is an IList of landmarks, return it
+            if (poseObj is IList directList) return directList;
+
+            // Look for any property or field on poseObj that is IEnumerable (likely holds the landmarks)
+            var t = poseObj.GetType();
+            foreach (var member in t.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (member.PropertyType == typeof(string)) continue;
+                if (typeof(IEnumerable).IsAssignableFrom(member.PropertyType))
+                {
+                    var val = member.GetValue(poseObj);
+                    if (val == null) continue;
+                    var arr = new ArrayList();
+                    foreach (var it in (IEnumerable)val) arr.Add(it);
+                    if (arr.Count > 0) return arr;
+                }
+            }
+            foreach (var member in t.GetFields(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (member.FieldType == typeof(string)) continue;
+                if (typeof(IEnumerable).IsAssignableFrom(member.FieldType))
+                {
+                    var val = member.GetValue(poseObj);
+                    if (val == null) continue;
+                    var arr = new ArrayList();
+                    foreach (var it in (IEnumerable)val) arr.Add(it);
+                    if (arr.Count > 0) return arr;
+                }
+            }
+
+            // As a last resort, if the poseObj itself is IEnumerable, return its elements
+            if (poseObj is IEnumerable ie2)
+            {
+                var arr2 = new ArrayList();
+                foreach (var it in ie2) arr2.Add(it);
+                if (arr2.Count > 0) return arr2;
+            }
+
+            return null;
+        }
+
+        private Vector3 ExtractVector3FromLandmark(object lm)
+        {
+            if (lm == null) return Vector3.zero;
+            var t = lm.GetType();
+
+            float GetNumberIgnoreCase(string name)
+            {
+                // Try property then field with case-insensitive search
+                var p = t.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+                if (p != null)
+                {
+                    var v = p.GetValue(lm);
+                    if (v is float f) return f;
+                    if (v is double d) return (float)d;
+                    if (v is decimal m) return (float)m;
+                }
+                var fInfo = t.GetField(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+                if (fInfo != null)
+                {
+                    var v = fInfo.GetValue(lm);
+                    if (v is float f2) return f2;
+                    if (v is double d2) return (float)d2;
+                    if (v is decimal m2) return (float)m2;
+                }
+                return 0f;
+            }
+
+            var x = GetNumberIgnoreCase("X");
+            var y = GetNumberIgnoreCase("Y");
+            var z = GetNumberIgnoreCase("Z");
+
+            // fallback lowercase names if zero
+            if (x == 0f) x = GetNumberIgnoreCase("x");
+            if (y == 0f) y = GetNumberIgnoreCase("y");
+            if (z == 0f) z = GetNumberIgnoreCase("z");
+
+            return new Vector3(x, y, z);
+        }
+
+        private void DisposeAllMasks(PoseLandmarkerResult result)
+        {
+            if (result.segmentationMasks != null)
+            {
+                foreach (var mask in result.segmentationMasks)
+                {
+                    mask.Dispose();
+                }
+            }
+        }
+    }
+}
