@@ -28,9 +28,11 @@ namespace Mediapipe.Unity.Sample.PoseLandmarkDetection
         public event Action<Vector3, Vector3, float, float> OnShouldersDetected;
         private float _prevLeftY = float.NaN;
         private float _prevRightY = float.NaN;
+        private string _lastZone = "";
 
         private const int LEFT_SHOULDER_INDEX = 11;
         private const int RIGHT_SHOULDER_INDEX = 12;
+        private int No_Of_Skipped_Frames = 0;
 
         public override void Stop()
         {
@@ -185,32 +187,31 @@ namespace Mediapipe.Unity.Sample.PoseLandmarkDetection
         // Reflection-safe extraction of shoulder landmarks compatible with various generated types
         private void TryInvokeShoulders(PoseLandmarkerResult result)
         {
-
-            // Try normalized pose list first, then world pose list
-            var firstPoseObj = GetFirstPoseElement(result, "poseLandmarks") ?? GetFirstPoseElement(result, "poseWorldLandmarks");
+            // 1) Grab the first available landmark list (normalized or world)
+            var firstPoseObj = GetFirstPoseElement(result, "poseLandmarks")
+                             ?? GetFirstPoseElement(result, "poseWorldLandmarks");
             if (firstPoseObj == null) return;
 
             var landmarkList = GetLandmarkEnumerable(firstPoseObj);
             if (landmarkList == null) return;
-
-            // Ensure we have enough landmarks
             if (landmarkList.Count <= RIGHT_SHOULDER_INDEX) return;
 
             var leftObj = landmarkList[LEFT_SHOULDER_INDEX];
             var rightObj = landmarkList[RIGHT_SHOULDER_INDEX];
             if (leftObj == null || rightObj == null) return;
 
+            // 2) Extract shoulder Vector3s
             var left = ExtractVector3FromLandmark(leftObj);
             var right = ExtractVector3FromLandmark(rightObj);
 
-            //UnityEngine.Debug.Log($"[PoseLandmarkerRunner] Shoulders -> left:{left} right:{right}");
+            // 3) Fire the shoulder‐detected event
             OnShouldersDetected?.Invoke(left, right, 1f, 1f);
 
-            // Threshold = 10% of shoulder horizontal distance
+            // 4) Jump detection: threshold = 25% of horizontal shoulder span
             float shoulderDistX = Mathf.Abs(left.x - right.x);
-            float threshold = 0.1f * shoulderDistX;
+            float threshold = 0.25f * shoulderDistX;
 
-            // Determine coordinate convention (assume normalized if values are roughly in 0..1)
+            // Determine if coords are normalized (0..1) or world (>1)
             bool looksNormalized =
                 Mathf.Abs(left.x) <= 1.1f && Mathf.Abs(left.y) <= 1.1f &&
                 Mathf.Abs(right.x) <= 1.1f && Mathf.Abs(right.y) <= 1.1f;
@@ -218,29 +219,49 @@ namespace Mediapipe.Unity.Sample.PoseLandmarkDetection
             float leftY = left.y;
             float rightY = right.y;
 
-            // Initialize previous values on first frame
+            // 5) Initialize on first frame
             if (float.IsNaN(_prevLeftY) || float.IsNaN(_prevRightY))
             {
                 _prevLeftY = leftY;
                 _prevRightY = rightY;
+                return;
             }
-            else
+
+            // 6) Compute upward deltas (positive = upward motion)
+            float deltaLeft = looksNormalized
+                ? (_prevLeftY - leftY)
+                : (leftY - _prevLeftY);
+            float deltaRight = looksNormalized
+                ? (_prevRightY - rightY)
+                : (rightY - _prevRightY);
+
+            // 7) Skip frames logic for jump
+            No_Of_Skipped_Frames--;
+            if ((deltaLeft > threshold || deltaRight > threshold)
+                && No_Of_Skipped_Frames <= 0)
             {
-                // For normalized coords, upward motion means Y decreases
-                // For world coords, upward motion means Y increases
-                float deltaLeft = looksNormalized ? (_prevLeftY - leftY) : (leftY - _prevLeftY);
-                float deltaRight = looksNormalized ? (_prevRightY - rightY) : (rightY - _prevRightY);
-
-                if (deltaLeft > threshold || deltaRight > threshold)
-                {
-                    UnityEngine.Debug.Log("Jump");
-                }
-
-                _prevLeftY = leftY;
-                _prevRightY = rightY;
+                UnityEngine.Debug.Log("Jump");
+                No_Of_Skipped_Frames = 10;
             }
 
+            // 8) Zone detection: midpoint X splits screen into Left/Center/Right thirds
+            Vector3 center = (left + right) * 0.5f;
+            string zone;
+            if (center.x < 1f / 3f) zone = "Left";
+            else if (center.x < 2f / 3f) zone = "Center";
+            else zone = "Right";
+
+            if (zone != _lastZone)
+            {
+                _lastZone = zone;
+                UnityEngine.Debug.Log($"Position: {zone}");
+            }
+
+            // 9) Store for next frame
+            _prevLeftY = leftY;
+            _prevRightY = rightY;
         }
+
 
         private object GetFirstPoseElement(object result, string poseFieldName)
         {
