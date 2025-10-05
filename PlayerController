@@ -1,0 +1,42 @@
+using UnityEngine;
+using Mediapipe.Unity.Sample.PoseLandmarkDetection;
+
+public class PlayerJumpController : MonoBehaviour
+{
+    private Animator animator;
+    public void SetJumpState(bool isJumping)
+    {
+        animator.SetBool("IsJumping", isJumping);
+    }
+    private void ReceiveMessage(string message)
+    {
+        if (message == "jump")
+        {
+            animator.SetBool("IsJumping", true);
+            animator.SetBool("IsJumping", false);
+
+        }
+        else if (message == "land")
+        {
+            animator.SetBool("IsJumping", false);
+        }
+    }
+    void Start()
+    {
+        // Get the Animator component attached to the player
+        animator = GetComponent<Animator>();
+    }
+
+    void Update()
+    {
+        // Check if spacebar is pressed
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+            animator.SetBool("IsJumping", true);
+        }
+        else if (Input.GetKeyUp(KeyCode.Space))
+        {
+            animator.SetBool("IsJumping", false);
+        }
+    }
+}
