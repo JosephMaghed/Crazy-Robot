@@ -18,9 +18,13 @@ namespace Mediapipe.Unity.Sample.PoseLandmarkDetection
 {
     public class PoseLandmarkerRunner : VisionTaskApiRunner<PoseLandmarker>
     {
+        
         [SerializeField] private PoseLandmarkerResultAnnotationController _poseLandmarkerResultAnnotationController;
 
         private Experimental.TextureFramePool _textureFramePool;
+
+        [Header("Player")]
+        [SerializeField] private PlayerJumpController playerJumpController;
 
         public readonly PoseLandmarkDetectionConfig config = new PoseLandmarkDetectionConfig();
 
@@ -33,6 +37,9 @@ namespace Mediapipe.Unity.Sample.PoseLandmarkDetection
         private const int LEFT_SHOULDER_INDEX = 11;
         private const int RIGHT_SHOULDER_INDEX = 12;
         private int No_Of_Skipped_Frames = 0;
+        private int Cool_Down = 0;
+
+
 
         public override void Stop()
         {
@@ -43,7 +50,7 @@ namespace Mediapipe.Unity.Sample.PoseLandmarkDetection
 
         protected override IEnumerator Run()
         {
-            UnityEngine.Debug.Log($"Delegate = {config.Delegate}");
+            /*UnityEngine.Debug.Log($"Delegate = {config.Delegate}");
             UnityEngine.Debug.Log($"Image Read Mode = {config.ImageReadMode}");
             UnityEngine.Debug.Log($"Model = {config.ModelName}");
             UnityEngine.Debug.Log($"Running Mode = {config.RunningMode}");
@@ -51,7 +58,7 @@ namespace Mediapipe.Unity.Sample.PoseLandmarkDetection
             UnityEngine.Debug.Log($"MinPoseDetectionConfidence = {config.MinPoseDetectionConfidence}");
             UnityEngine.Debug.Log($"MinPosePresenceConfidence = {config.MinPosePresenceConfidence}");
             UnityEngine.Debug.Log($"MinTrackingConfidence = {config.MinTrackingConfidence}");
-            UnityEngine.Debug.Log($"OutputSegmentationMasks = {config.OutputSegmentationMasks}");
+            UnityEngine.Debug.Log($"OutputSegmentationMasks = {config.OutputSegmentationMasks}");*/
 
             yield return AssetLoader.PrepareAssetAsync(config.ModelPath);
 
@@ -135,7 +142,7 @@ namespace Mediapipe.Unity.Sample.PoseLandmarkDetection
 
                         if (req.hasError)
                         {
-                            UnityEngine.Debug.LogWarning($"Failed to read texture from the image source");
+                          //  UnityEngine.Debug.LogWarning($"Failed to read texture from the image source");
                             continue;
                         }
                         image = textureFrame.BuildCPUImage();
@@ -209,7 +216,7 @@ namespace Mediapipe.Unity.Sample.PoseLandmarkDetection
 
             // 4) Jump detection: threshold = 25% of horizontal shoulder span
             float shoulderDistX = Mathf.Abs(left.x - right.x);
-            float threshold = 0.25f * shoulderDistX;
+            float threshold = 0.35f * shoulderDistX;
 
             // Determine if coords are normalized (0..1) or world (>1)
             bool looksNormalized =
@@ -237,11 +244,27 @@ namespace Mediapipe.Unity.Sample.PoseLandmarkDetection
 
             // 7) Skip frames logic for jump
             No_Of_Skipped_Frames--;
+            Cool_Down--;
+
             if ((deltaLeft > threshold || deltaRight > threshold)
                 && No_Of_Skipped_Frames <= 0)
             {
-                UnityEngine.Debug.Log("Jump");
+                //UnityEngine.Debug.Log("Jump");
                 No_Of_Skipped_Frames = 10;
+                Cool_Down = 10;
+                UnityMainThread.Context?.Post(_ =>
+                {
+                    playerJumpController.SetJumpState(true);
+                }, null);
+
+
+            }
+            if(Cool_Down==0) 
+            {
+                UnityMainThread.Context?.Post(_ =>
+                {
+                    playerJumpController.SetJumpState(false);
+                }, null);
             }
 
             // 8) Zone detection: midpoint X splits screen into Left/Center/Right thirds
@@ -254,7 +277,7 @@ namespace Mediapipe.Unity.Sample.PoseLandmarkDetection
             if (zone != _lastZone)
             {
                 _lastZone = zone;
-                UnityEngine.Debug.Log($"Position: {zone}");
+                //UnityEngine.Debug.Log($"Position: {zone}");
             }
 
             // 9) Store for next frame
