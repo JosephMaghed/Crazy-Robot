@@ -1,0 +1,27 @@
+using UnityEngine;
+
+public class GroundSpawner : MonoBehaviour
+{
+    [SerializeField] private GameObject initialTile; // Assign the first tile in the scene
+    public GameObject groundTile;
+    Vector3 nextSpawnPoint;
+
+   public void SpawnTile()
+    {
+       GameObject temp= Instantiate(groundTile, nextSpawnPoint, Quaternion.identity);
+        nextSpawnPoint = temp.transform.GetChild(2).transform.position;
+    }
+    // Start is called once before the first execution of Update after the MonoBehaviour is created
+    void Start()
+    {
+        nextSpawnPoint = initialTile.transform.GetChild(2).position;
+        SpawnTile();
+        SpawnTile();
+        SpawnTile();
+        SpawnTile();
+        SpawnTile();
+
+    }
+
+
+}
