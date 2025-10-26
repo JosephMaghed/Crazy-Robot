@@ -1,9 +1,95 @@
-using UnityEngine;
 using Mediapipe.Unity.Sample.PoseLandmarkDetection;
+using UnityEngine.SceneManagement;
+using System.Diagnostics;
+using UnityEngine;
+using System.Collections;
 
 public class PlayerJumpController : MonoBehaviour
 {
+    bool alive=true;
     private Animator animator;
+    [SerializeField] private float speed = 5f; // Units per second
+    [SerializeField] private Transform RoadTransform;      // Assign in Inspector
+    [SerializeField] private GameObject road;      // Assign in Inspector
+    private float roadWidth ; // Total width of the road in meters
+
+    private GameObject FindNearestRoad()
+    {
+        GameObject[] roads = GameObject.FindGameObjectsWithTag("Road");
+        GameObject nearest = null;
+        float minDistance = Mathf.Infinity;
+
+        foreach (GameObject road in roads)
+        {
+            float distance = Vector3.Distance(transform.position, road.transform.position);
+            if (distance < minDistance)
+            {
+                minDistance = distance;
+                nearest = road;
+            }
+        }
+
+        return nearest;
+    }
+
+    float GetObjectLengthZ(GameObject obj)
+    {
+        Renderer renderer = obj.GetComponent<Renderer>();
+        if (renderer != null)
+        {
+            return renderer.bounds.size.z;
+        }
+        else
+        {
+            //Debug.LogWarning("No Renderer found on object.");
+            return 0f;
+        }
+    }
+
+    public void MoveToPosition(string command)
+    {
+        GameObject nearestRoad = FindNearestRoad();
+        if (nearestRoad == null) return;
+
+        float targetZ = nearestRoad.transform.position.z;
+
+        switch (command.ToLower())
+        {
+            case "left":
+                targetZ -= roadWidth / 4.0f;
+                break;
+            case "middle":
+                targetZ = nearestRoad.transform.position.z;
+                break;
+            case "right":
+                targetZ += roadWidth / 4.0f;
+                break;
+            default:
+                //Debug.LogWarning("Invalid command: use 'left', 'middle', or 'right'");
+                return;
+        }
+
+        Vector3 targetPosition = new Vector3(transform.position.x, transform.position.y, targetZ);
+        StopAllCoroutines();
+        StartCoroutine(SmoothMove(targetPosition, 0.1f));
+    }
+
+
+    private IEnumerator SmoothMove(Vector3 target, float duration)
+    {
+        Vector3 start = transform.position;
+        float elapsed = 0f;
+
+        while (elapsed < duration)
+        {
+            transform.position = Vector3.Lerp(start, target, elapsed / duration);
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+
+        transform.position = target; // Snap to final position
+    }
+
     public void SetJumpState(bool isJumping)
     {
         animator.SetBool("IsJumping", isJumping);
@@ -21,14 +107,31 @@ public class PlayerJumpController : MonoBehaviour
             animator.SetBool("IsJumping", false);
         }
     }
+    public void Die()
+    {
+        alive = false;
+        animator.SetBool("IsDead", true);
+        transform.Translate(Vector3.back * 2f, Space.Self); // Adjust 2f to control distance
+        // Rsetart the game
+        //UnityEngine.Debug.("Dead");
+        //SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+    }
     void Start()
     {
         // Get the Animator component attached to the player
         animator = GetComponent<Animator>();
+        roadWidth = GetObjectLengthZ(FindNearestRoad());
     }
 
     void Update()
     {
+        if (alive) {
+            //Auto move snippet if alive
+            transform.Translate(Vector3.forward * speed * Time.deltaTime);
+        }
+        
+    
+
         // Check if spacebar is pressed
         if (Input.GetKeyDown(KeyCode.Space))
         {
@@ -39,4 +142,5 @@ public class PlayerJumpController : MonoBehaviour
             animator.SetBool("IsJumping", false);
         }
     }
+    
 }
