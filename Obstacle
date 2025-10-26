@@ -1,0 +1,36 @@
+using System.Diagnostics;
+using UnityEngine;
+
+public class Obstacle : MonoBehaviour
+{
+
+    PlayerJumpController playerJumpController;
+        // Start is called once before the first execution of Update after the MonoBehaviour is created
+    void Start()
+    {
+        playerJumpController = GameObject.FindObjectOfType<PlayerJumpController>();
+
+        if (playerJumpController == null)
+        {
+            UnityEngine.Debug.LogError("PlayerJumpController not found!");
+        }
+
+    }
+    private void OnTriggerEnter(Collider other)
+    {
+        if (other.CompareTag("Robot"))
+        {
+            //Kill the player
+            UnityEngine.Debug.LogError("Dead!!!");
+        playerJumpController.Die();
+        }
+
+       
+
+    } 
+    // Update is called once per frame
+    void Update()
+    {
+        
+    }
+}
