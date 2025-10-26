@@ -1,0 +1,34 @@
+using System;
+using System.Diagnostics;
+using System.Security.Cryptography;
+using UnityEngine;
+
+public class GroundTile : MonoBehaviour
+{
+    GroundSpawner groundSpawner;
+    // Start is called once before the first execution of Update after the MonoBehaviour is created
+    void Start()
+    {
+        groundSpawner = GameObject.FindObjectOfType<GroundSpawner>();
+        SpawnObstacle();
+    }
+   private void OnTriggerExit(Collider other)
+    {
+       groundSpawner.SpawnTile();
+        Destroy(gameObject, 10);
+    }
+    // Update is called once per frame
+    void Update()
+    {
+        
+    }
+    public GameObject obstaclePrefab;
+    void SpawnObstacle() 
+    {
+        //Choose a random point to spawn the obstacle
+        int obstacleSpawnIdex = UnityEngine.Random.Range(3,6);
+        Transform  spawnPoint= transform.GetChild(obstacleSpawnIdex).transform;
+        // Spawn the Obstacle at the random position
+        Instantiate(obstaclePrefab,spawnPoint.position, obstaclePrefab.transform.rotation, transform );
+    }
+}
