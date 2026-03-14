@@ -1,0 +1,175 @@
+1. Acceptance of Terms
+
+By downloading, installing, or playing [Game Name] (the “Game”), you agree to be bound by this User Agreement.
+If you do not agree to these terms, do not install or use the Game.
+
+2. Description of the Game
+
+The Game is an interactive experience that requires players to:
+
+Move physically in front of their device camera
+
+Jump, step, and perform body movements
+
+Use a device equipped with a functional camera
+
+The Game uses the camera for gameplay detection and interaction.
+
+3. Camera Requirement
+
+The Game requires access to your device camera to function properly.
+
+Camera access is used solely for gameplay interaction.
+
+The Game does not transmit, upload, or store camera recordings on external servers.
+
+Camera data is processed in real time and is not retained.
+
+If you do not grant camera permission, the Game will not function as intended.
+
+4. Data Storage & Privacy
+
+The Game stores gameplay data locally on your device.
+
+No personal data is collected, transmitted, or stored on external servers unless otherwise stated.
+
+Uninstalling the Game may delete locally stored data.
+
+The developer does not sell, share, or distribute user data.
+
+For more details, please refer to the Privacy Policy (if applicable).
+
+5. User Responsibility & Safe Environment
+
+By playing the Game, you acknowledge and agree that:
+
+You are solely responsible for ensuring a safe physical environment before playing.
+
+You must clear the surrounding area of obstacles, furniture, sharp objects, pets, or other hazards.
+
+You must ensure adequate space for movement and jumping.
+
+You must use appropriate footwear and avoid slippery surfaces.
+
+You should not play near stairs, balconies, pools, roads, or dangerous areas.
+
+You are responsible for supervising minors.
+
+6. Health & Physical Activity Disclaimer
+
+The Game involves physical movement and may not be suitable for everyone.
+
+You should NOT play if you:
+
+Have heart conditions
+
+Have balance disorders
+
+Have joint, bone, or muscle injuries
+
+Are pregnant (without medical advice)
+
+Have medical conditions aggravated by physical activity
+
+Consult a physician if you are unsure about your ability to participate.
+
+Stop playing immediately if you experience:
+
+Dizziness
+
+Shortness of breath
+
+Chest pain
+
+Loss of balance
+
+Any physical discomfort
+
+7. Assumption of Risk
+
+You acknowledge that:
+
+Physical activity involves inherent risks.
+
+Injuries may occur including falls, collisions, muscle strain, or other physical harm.
+
+You voluntarily assume all risks associated with playing the Game.
+
+8. Limitation of Liability
+
+To the maximum extent permitted by law:
+
+The developer shall not be liable for any physical injury, property damage, loss, or harm resulting from the use of the Game.
+
+The developer is not responsible for accidents caused by unsafe play environments.
+
+The Game is provided “AS IS” without warranties of any kind.
+
+Your use of the Game is at your own risk.
+
+9. Age Requirement
+
+The Game is intended for users aged [Insert Age, e.g., 13+] or as required by local regulations.
+
+Minors must have parental consent and supervision.
+
+10. Modifications
+
+The developer reserves the right to update or modify this Agreement at any time. Continued use of the Game after changes constitutes acceptance of the updated terms.
+
+11. Contact Information
+
+If you have questions about this Agreement, please contact:
+
+Email: [Your Support Email]
+Developer Name: [Your Name / Company Name]
+
+Important Note for Play Store
+
+Google Play also requires:
+
+A separate Privacy Policy page (even if you only store local data).
+
+Clear disclosure of camera usage inside the Play Store “Data Safety” section.
+
+Runtime permission request explanation inside the app.
+
+12. Advertising & Third-Party Services
+Unity Ads Integration
+
+The Game uses Unity Ads to deliver advertisements, including rewarded ads.
+
+Advertisements may appear during gameplay, and rewards (if any) are granted only upon full ad completion.
+
+Data Collection by Unity Ads
+
+Unity Ads may collect certain information from your device to serve and optimize ads, including:
+
+Device identifiers (such as Advertising ID, IP address, device model, operating system version).
+
+App activity (ad impressions, clicks, rewarded ad completions, gameplay events tied to ads).
+
+App performance data (crash logs, latency, framerate, diagnostics).
+
+Approximate location (city-level, inferred from IP address).
+
+Unity Ads does not collect sensitive personal information such as names, emails, addresses, financial data, health data, or contacts.
+
+Personalized vs. Non-Personalized Ads
+
+Ads may be personalized based on collected data if you provide consent.
+
+If you do not provide consent, Unity Ads will serve non-personalized ads.
+
+Privacy Policy Reference
+
+For more details on Unity Ads’ data collection and privacy practices, please refer to our Privacy Policy at: [Insert Privacy Policy URL].
+
+This Privacy Policy explains how data is handled, user rights, and how to request deletion of personal data.
+
+Runtime Permission Disclosure
+
+The Game will request camera permission at runtime. This permission is required for gameplay detection and will be explained in-app.
+
+
+
